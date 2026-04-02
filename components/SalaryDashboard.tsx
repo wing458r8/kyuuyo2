@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AttendanceRecord, ShiftRecord } from "@/lib/types";
+import AttendanceCalendar from "@/components/AttendanceCalendar";
 import {
   formatCurrency,
   formatHours,
@@ -227,6 +228,13 @@ export default function SalaryDashboard({
           </div>
         )}
       </div>
+
+      {/* カレンダー */}
+      <AttendanceCalendar
+        attendance={attendance}
+        shifts={shifts ?? []}
+        onDeleteRecord={onDeleteRecord}
+      />
 
       {/* 勤怠履歴 */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
