@@ -289,7 +289,7 @@ export async function POST(req: NextRequest) {
         const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const apiMessages = prepareApiMessages(messages);
         const systemPrompt = buildSystemPrompt(hourlyRate, today, attendanceSummary);
-        let conversationMessages = [...apiMessages];
+        let conversationMessages: Anthropic.MessageParam[] = [...apiMessages];
         let iterations = 0;
 
         while (iterations < 5) {
