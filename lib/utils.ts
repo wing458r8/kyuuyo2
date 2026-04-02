@@ -114,6 +114,21 @@ export function upsertAttendance(
   return [...filtered, record].sort((a, b) => b.date.localeCompare(a.date));
 }
 
+export function getThisWeekRecords(attendance: AttendanceRecord[]): AttendanceRecord[] {
+  const today = new Date();
+  const dow = today.getDay();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  startOfWeek.setHours(0, 0, 0, 0);
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  endOfWeek.setHours(23, 59, 59, 999);
+  return attendance.filter((r) => {
+    const d = new Date(r.date + "T00:00:00");
+    return d >= startOfWeek && d <= endOfWeek;
+  });
+}
+
 export function prepareApiMessages(
   messages: { role: string; content: string }[]
 ): { role: "user" | "assistant"; content: string }[] {

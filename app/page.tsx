@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ChatInterface from "@/components/ChatInterface";
 import SalaryDashboard from "@/components/SalaryDashboard";
-import { AttendanceRecord, ChatMessage, SSEEvent } from "@/lib/types";
+import { AttendanceRecord, ChatMessage, ShiftRecord, SSEEvent } from "@/lib/types";
 import {
   getTodayString,
   groupByMonth,
@@ -17,6 +17,8 @@ const DEFAULT_HOURLY_RATE = 1000;
 const STORAGE_KEY_ATTENDANCE = "kyuyo_attendance";
 const STORAGE_KEY_RATE = "kyuyo_hourly_rate";
 const STORAGE_KEY_MESSAGES = "kyuyo_messages";
+const STORAGE_KEY_SHIFTS = "kyuyo_shifts";
+const STORAGE_KEY_GOAL = "kyuyo_monthly_goal";
 
 function buildAttendanceSummary(
   attendance: AttendanceRecord[],
@@ -53,6 +55,8 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [isLoading, setIsLoading] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "dashboard">("chat");
+  const [shifts, setShifts] = useState<ShiftRecord[]>([]);
+  const [monthlyGoal, setMonthlyGoal] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
 
   // Load from localStorage
@@ -67,6 +71,10 @@ export default function Home() {
         const parsed = JSON.parse(savedMessages);
         if (parsed.length > 0) setMessages(parsed);
       }
+      const savedShifts = localStorage.getItem(STORAGE_KEY_SHIFTS);
+      if (savedShifts) setShifts(JSON.parse(savedShifts));
+      const savedGoal = localStorage.getItem(STORAGE_KEY_GOAL);
+      if (savedGoal) setMonthlyGoal(Number(savedGoal));
     } catch {
       // ignore parse errors
     }
@@ -89,6 +97,16 @@ export default function Home() {
       JSON.stringify(messages.slice(-50))
     );
   }, [messages]);
+
+  // Save shifts
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SHIFTS, JSON.stringify(shifts));
+  }, [shifts]);
+
+  // Save monthly goal
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_GOAL, String(monthlyGoal));
+  }, [monthlyGoal]);
 
   const addAssistantPlaceholder = () => {
     const id = `msg_${Date.now()}`;
@@ -226,6 +244,17 @@ export default function Home() {
     setAttendance((prev) => prev.filter((r) => r.date !== date));
   }, []);
 
+  const handleAddShift = useCallback((shift: ShiftRecord) => {
+    setShifts((prev) => {
+      const filtered = prev.filter((s) => s.date !== shift.date);
+      return [...filtered, shift].sort((a, b) => a.date.localeCompare(b.date));
+    });
+  }, []);
+
+  const handleDeleteShift = useCallback((date: string) => {
+    setShifts((prev) => prev.filter((s) => s.date !== date));
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -283,6 +312,11 @@ export default function Home() {
               hourlyRate={hourlyRate}
               onHourlyRateChange={setHourlyRate}
               onDeleteRecord={handleDeleteRecord}
+              monthlyGoal={monthlyGoal}
+              onMonthlyGoalChange={setMonthlyGoal}
+              shifts={shifts}
+              onAddShift={handleAddShift}
+              onDeleteShift={handleDeleteShift}
             />
           </div>
         </div>
@@ -303,6 +337,11 @@ export default function Home() {
               hourlyRate={hourlyRate}
               onHourlyRateChange={setHourlyRate}
               onDeleteRecord={handleDeleteRecord}
+              monthlyGoal={monthlyGoal}
+              onMonthlyGoalChange={setMonthlyGoal}
+              shifts={shifts}
+              onAddShift={handleAddShift}
+              onDeleteShift={handleDeleteShift}
             />
           )}
         </div>

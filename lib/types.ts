@@ -4,6 +4,15 @@ export interface AttendanceRecord {
   salary: number;
   startTime?: string; // "09:00"
   endTime?: string;   // "19:00"
+  breakMinutes?: number; // 60
+  transport?: number;    // 500
+}
+
+export interface ShiftRecord {
+  date: string; // YYYY-MM-DD
+  startTime: string; // "09:00"
+  endTime: string;   // "19:00"
+  note?: string;
 }
 
 export interface ChatMessage {
