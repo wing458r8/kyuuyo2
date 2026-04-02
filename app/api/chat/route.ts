@@ -102,6 +102,7 @@ function parseHours(text: string): number | null {
 type ParseResult =
   | { type: "record"; date: string; hours: number; startTime?: string; endTime?: string }
   | { type: "delete"; date: string }
+  | { type: "date_query"; date: string }
   | { type: "query" }
   | { type: "unknown" };
 
@@ -124,7 +125,11 @@ function parseIntent(text: string, today: string): ParseResult {
     hours !== null;
   if (isRecord && hours !== null) return { type: "record", date, hours };
 
-  const isQuery = /給与|給料|いくら|合計|今月|今年|今日の|稼[いぎ]|計算/.test(text);
+  // 特定日の給与照会（例: 今日の給与は？ 昨日いくら？）
+  const isDateQuery = /給与|給料|いくら|稼[いぎ]/.test(text) && parseDate(text, today) !== null;
+  if (isDateQuery) return { type: "date_query", date };
+
+  const isQuery = /給与|給料|いくら|合計|今月|今年|今日|昨日|稼[いぎ]|計算/.test(text);
   if (isQuery) return { type: "query" };
 
   return { type: "unknown" };
@@ -171,6 +176,15 @@ function ruleBasedReply(
       reply: `🗑️ ${formatDateJP(intent.date)}の記録を削除しました。`,
       action: intent,
     };
+  }
+
+  if (intent.type === "date_query") {
+    // attendanceSummaryから該当日を探す（"YYYY-MM-DD: XX時間 ¥XX,XXX" 形式を想定）
+    const lines = attendanceSummary.split("\n").filter((l) => l.includes(intent.date));
+    if (lines.length > 0) {
+      return { reply: `${formatDateJP(intent.date)}の給与:\n${lines[0]}` };
+    }
+    return { reply: `${formatDateJP(intent.date)}の記録はまだありません。` };
   }
 
   if (intent.type === "query") {
@@ -243,6 +257,11 @@ function buildSystemPrompt(hourlyRate: number, today: string, attendanceSummary:
 - 勤務時間数だけ伝えた場合（例: 8時間）は hours のみ使用
 - 「今日」→ ${today}、「昨日」→ 前日、曜日 → 最近の該当曜日 に変換
 - 割増計算は給与計算サーバー側で自動実施なので、ツールに時刻を渡すだけでOK
+
+## 給与照会のルール
+- 「今日の給与は？」「昨日いくら？」→ 勤怠データから該当日を検索して答える
+- 「今月の合計は？」「今年いくら稼いだ？」→ 勤怠データから集計して答える
+- データがない日は「記録がありません」と伝える
 
 ## 応答のルール
 - 常に日本語でフレンドリーに応答
