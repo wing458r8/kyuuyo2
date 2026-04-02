@@ -114,6 +114,32 @@ export function upsertAttendance(
   return [...filtered, record].sort((a, b) => b.date.localeCompare(a.date));
 }
 
+export function projectAnnualIncome(attendance: AttendanceRecord[]): { monthly: number; annual: number; daysPerMonth: number } {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  // 今月の記録
+  const thisMonth = attendance.filter((r) => {
+    const d = new Date(r.date + "T00:00:00");
+    return d.getFullYear() === year && d.getMonth() + 1 === month;
+  });
+  if (thisMonth.length === 0) {
+    // 全記録から月平均を計算
+    const grouped: Record<string, number> = {};
+    for (const r of attendance) {
+      const key = r.date.substring(0, 7);
+      grouped[key] = (grouped[key] ?? 0) + r.salary;
+    }
+    const months = Object.values(grouped);
+    if (months.length === 0) return { monthly: 0, annual: 0, daysPerMonth: 0 };
+    const monthly = Math.round(months.reduce((s, v) => s + v, 0) / months.length);
+    const daysPerMonth = Math.round(attendance.length / months.length);
+    return { monthly, annual: monthly * 12, daysPerMonth };
+  }
+  const monthly = thisMonth.reduce((s, r) => s + r.salary, 0);
+  return { monthly, annual: monthly * 12, daysPerMonth: thisMonth.length };
+}
+
 export function getThisWeekRecords(attendance: AttendanceRecord[]): AttendanceRecord[] {
   const today = new Date();
   const dow = today.getDay();

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ChatInterface from "@/components/ChatInterface";
 import SalaryDashboard from "@/components/SalaryDashboard";
-import { AttendanceRecord, ChatMessage, ShiftRecord, SSEEvent } from "@/lib/types";
+import JobManager from "@/components/JobManager";
+import { AttendanceRecord, ChatMessage, Job, ShiftRecord, SSEEvent } from "@/lib/types";
 import {
   getTodayString,
   groupByMonth,
@@ -19,6 +20,15 @@ const STORAGE_KEY_RATE = "kyuyo_hourly_rate";
 const STORAGE_KEY_MESSAGES = "kyuyo_messages";
 const STORAGE_KEY_SHIFTS = "kyuyo_shifts";
 const STORAGE_KEY_GOAL = "kyuyo_monthly_goal";
+const STORAGE_KEY_JOBS = "kyuyo_jobs";
+const STORAGE_KEY_ACTIVE_JOB = "kyuyo_active_job";
+
+const DEFAULT_JOB: Job = {
+  id: "default",
+  name: "メインバイト",
+  hourlyRate: DEFAULT_HOURLY_RATE,
+  color: "from-blue-400 to-indigo-500",
+};
 
 function buildAttendanceSummary(
   attendance: AttendanceRecord[],
@@ -57,7 +67,11 @@ export default function Home() {
   const [mobileTab, setMobileTab] = useState<"chat" | "dashboard">("chat");
   const [shifts, setShifts] = useState<ShiftRecord[]>([]);
   const [monthlyGoal, setMonthlyGoal] = useState(0);
+  const [jobs, setJobs] = useState<Job[]>([DEFAULT_JOB]);
+  const [activeJobId, setActiveJobId] = useState<string>("default");
   const abortRef = useRef<AbortController | null>(null);
+
+  const activeJob = jobs.find((j) => j.id === activeJobId) ?? jobs[0];
 
   // Load from localStorage
   useEffect(() => {
@@ -75,6 +89,10 @@ export default function Home() {
       if (savedShifts) setShifts(JSON.parse(savedShifts));
       const savedGoal = localStorage.getItem(STORAGE_KEY_GOAL);
       if (savedGoal) setMonthlyGoal(Number(savedGoal));
+      const savedJobs = localStorage.getItem(STORAGE_KEY_JOBS);
+      if (savedJobs) setJobs(JSON.parse(savedJobs));
+      const savedActiveJob = localStorage.getItem(STORAGE_KEY_ACTIVE_JOB);
+      if (savedActiveJob) setActiveJobId(savedActiveJob);
     } catch {
       // ignore parse errors
     }
@@ -107,6 +125,16 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_GOAL, String(monthlyGoal));
   }, [monthlyGoal]);
+
+  // Save jobs
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_JOBS, JSON.stringify(jobs));
+  }, [jobs]);
+
+  // Save active job
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_ACTIVE_JOB, activeJobId);
+  }, [activeJobId]);
 
   const addAssistantPlaceholder = () => {
     const id = `msg_${Date.now()}`;
@@ -158,11 +186,11 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: apiMessages,
-            hourlyRate,
+            hourlyRate: activeJob.hourlyRate,
             today: getTodayString(),
             attendanceSummary: buildAttendanceSummary(
               currentAttendance,
-              hourlyRate
+              activeJob.hourlyRate
             ),
           }),
           signal: controller.signal,
@@ -203,7 +231,7 @@ export default function Home() {
                 )
               );
             } else if (event.type === "attendance" && event.record) {
-              setAttendance((prev) => upsertAttendance(prev, event.record!));
+              setAttendance((prev) => upsertAttendance(prev, { ...event.record!, jobId: activeJobId }));
             } else if (event.type === "delete_attendance" && event.date) {
               setAttendance((prev) =>
                 prev.filter((r) => r.date !== event.date)
@@ -253,6 +281,20 @@ export default function Home() {
 
   const handleDeleteShift = useCallback((date: string) => {
     setShifts((prev) => prev.filter((s) => s.date !== date));
+  }, []);
+
+  const handleAddJob = useCallback((job: Job) => {
+    setJobs((prev) => [...prev, job]);
+    setActiveJobId(job.id);
+  }, []);
+
+  const handleDeleteJob = useCallback((id: string) => {
+    setJobs((prev) => prev.filter((j) => j.id !== id));
+    setActiveJobId((prev) => (prev === id ? jobs[0]?.id ?? "default" : prev));
+  }, [jobs]);
+
+  const handleUpdateJob = useCallback((job: Job) => {
+    setJobs((prev) => prev.map((j) => j.id === job.id ? job : j));
   }, []);
 
   return (
@@ -306,11 +348,19 @@ export default function Home() {
               onSendMessage={handleSendMessage}
             />
           </div>
-          <div className="md:col-span-2 overflow-y-auto pb-4">
+          <div className="md:col-span-2 overflow-y-auto pb-4 space-y-4">
+            <JobManager
+              jobs={jobs}
+              activeJobId={activeJobId}
+              onAddJob={handleAddJob}
+              onDeleteJob={handleDeleteJob}
+              onSetActive={setActiveJobId}
+              onUpdateJob={handleUpdateJob}
+            />
             <SalaryDashboard
               attendance={attendance}
-              hourlyRate={hourlyRate}
-              onHourlyRateChange={setHourlyRate}
+              hourlyRate={activeJob.hourlyRate}
+              onHourlyRateChange={(rate) => handleUpdateJob({ ...activeJob, hourlyRate: rate })}
               onDeleteRecord={handleDeleteRecord}
               monthlyGoal={monthlyGoal}
               onMonthlyGoalChange={setMonthlyGoal}
@@ -332,17 +382,27 @@ export default function Home() {
               />
             </div>
           ) : (
-            <SalaryDashboard
-              attendance={attendance}
-              hourlyRate={hourlyRate}
-              onHourlyRateChange={setHourlyRate}
-              onDeleteRecord={handleDeleteRecord}
-              monthlyGoal={monthlyGoal}
-              onMonthlyGoalChange={setMonthlyGoal}
-              shifts={shifts}
-              onAddShift={handleAddShift}
-              onDeleteShift={handleDeleteShift}
-            />
+            <div className="space-y-4">
+              <JobManager
+                jobs={jobs}
+                activeJobId={activeJobId}
+                onAddJob={handleAddJob}
+                onDeleteJob={handleDeleteJob}
+                onSetActive={setActiveJobId}
+                onUpdateJob={handleUpdateJob}
+              />
+              <SalaryDashboard
+                attendance={attendance}
+                hourlyRate={activeJob.hourlyRate}
+                onHourlyRateChange={(rate) => handleUpdateJob({ ...activeJob, hourlyRate: rate })}
+                onDeleteRecord={handleDeleteRecord}
+                monthlyGoal={monthlyGoal}
+                onMonthlyGoalChange={setMonthlyGoal}
+                shifts={shifts}
+                onAddShift={handleAddShift}
+                onDeleteShift={handleDeleteShift}
+              />
+            </div>
           )}
         </div>
       </main>

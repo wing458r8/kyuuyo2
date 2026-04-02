@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AttendanceRecord, ShiftRecord } from "@/lib/types";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
 import {
@@ -14,6 +14,7 @@ import {
   getThisMonthSalary,
   getThisYearSalary,
   getThisWeekRecords,
+  projectAnnualIncome,
 } from "@/lib/utils";
 
 interface Props {
@@ -76,6 +77,33 @@ export default function SalaryDashboard({
   const [goalInput, setGoalInput] = useState(String(monthlyGoal));
   const [showShiftForm, setShowShiftForm] = useState(false);
   const [shiftForm, setShiftForm] = useState({ date: "", startTime: "", endTime: "", note: "" });
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
+
+  useEffect(() => {
+    if ("Notification" in window) setNotifPermission(Notification.permission);
+  }, []);
+
+  const requestNotification = async () => {
+    if (!("Notification" in window)) { alert("このブラウザは通知をサポートしていません"); return; }
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+    if (perm === "granted") scheduleShiftReminders();
+  };
+
+  const scheduleShiftReminders = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+    const tomorrowShift = (shifts ?? []).find((s) => s.date === tomorrowStr);
+    if (tomorrowShift) {
+      new Notification("明日のシフト", {
+        body: `${tomorrow.getMonth() + 1}月${tomorrow.getDate()}日 ${tomorrowShift.startTime}〜${tomorrowShift.endTime}`,
+        icon: "/favicon.ico",
+      });
+    } else {
+      new Notification("通知を設定しました", { body: "シフト前日に通知をお届けします" });
+    }
+  };
 
   const today = getTodayString();
   const todaySalary = getTodaySalary(attendance);
@@ -84,6 +112,7 @@ export default function SalaryDashboard({
   const weekRecords = getThisWeekRecords(attendance);
   const weekSalary = weekRecords.reduce((s, r) => s + r.salary, 0);
   const weekHours = weekRecords.reduce((s, r) => s + r.hours, 0);
+  const annualProjection = projectAnnualIncome(attendance);
   const grouped = groupByMonth(attendance);
   const sortedMonths = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
   const goalProgress = monthlyGoal > 0 ? Math.min(100, Math.round((monthSalary / monthlyGoal) * 100)) : 0;
@@ -202,6 +231,46 @@ export default function SalaryDashboard({
         <SummaryCard label="今日" amount={todaySalary} color="from-emerald-400 to-teal-500" icon="☀️" />
         <SummaryCard label="今月" amount={monthSalary} color="from-blue-400 to-indigo-500" icon="📅" />
         <SummaryCard label="今年" amount={yearSalary} color="from-violet-400 to-purple-600" icon="📊" />
+      </div>
+
+      {/* 年収換算 */}
+      {annualProjection.annual > 0 && (
+        <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-4 text-white shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-semibold opacity-90">このペースだと年収</p>
+            <span className="text-lg">📈</span>
+          </div>
+          <p className="text-2xl font-bold">{formatCurrency(annualProjection.annual)}</p>
+          <p className="text-xs opacity-80 mt-1">
+            月{formatCurrency(annualProjection.monthly)} × 12ヶ月
+            {annualProjection.daysPerMonth > 0 && ` / 月${annualProjection.daysPerMonth}日ペース`}
+          </p>
+        </div>
+      )}
+
+      {/* 通知設定 */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">シフトリマインダー</p>
+            <p className="text-xs text-gray-400 mt-0.5">前日に通知でお知らせ</p>
+          </div>
+          {notifPermission === "granted" ? (
+            <span className="flex items-center gap-1 text-xs text-green-600 font-medium bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+              通知ON
+            </span>
+          ) : notifPermission === "denied" ? (
+            <span className="text-xs text-red-400 bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg">ブラウザで許可が必要</span>
+          ) : (
+            <button
+              onClick={requestNotification}
+              className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+            >
+              通知を許可
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 今週のサマリー */}
